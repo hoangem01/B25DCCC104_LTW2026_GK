@@ -1,60 +1,74 @@
-import React, { useState } from 'react';
-import StudentForm from './components/StudentForm';
-import StudentList from './components/StudentList';
+import React, { useState, useEffect } from 'react';
+import { Routes, Route } from 'react-router-dom';
+import axios from 'axios';
+import Layout from './components/Layout';
+import Home from './pages/Home';
+import ContactList from './pages/ContactList';
+import AddContact from './pages/AddContact';
+import ContactDetail from './pages/ContactDetail';
 
-const initialStudents = [
-  { id: 1, name: 'Nguyễn Văn A', score: 8.5, class: '10A1' },
-  { id: 2, name: 'Trần Thị B', score: 4.0, class: '10A2' },
-  { id: 3, name: 'Lê Văn C', score: 6.5, class: '10A1' }
-];
+const App = () => {
+  const [contacts, setContacts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-const App = () => {  const [students, setStudents] = useState(initialStudents);
-  const [filterType, setFilterType] = useState('ALL'); 
-  const handleAddStudent = (newStudent) => {    setStudents([...students, { ...newStudent, id: Date.now() }]);
+  // Tải dữ liệu từ LocalStorage hoặc API
+  useEffect(() => {
+    const localData = localStorage.getItem('gk_contacts');
+    if (localData) {
+      setContacts(JSON.parse(localData));
+      setLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    axios.get('/data/contacts.json', { signal: controller.signal })
+      .then(res => {
+        setContacts(res.data);
+        setLoading(false);
+      })
+      .catch(err => {
+        if (!axios.isCancel(err)) {
+          setError('Không tải được dữ liệu');
+          setLoading(false);
+        }
+      });
+
+    return () => controller.abort();
+  }, []);
+
+  // Lưu dữ liệu vào LocalStorage
+  useEffect(() => {
+    if (!loading) {
+      localStorage.setItem('gk_contacts', JSON.stringify(contacts));
+    }
+  }, [contacts, loading]);
+
+  const addContact = (newContact) => {
+    const nextId = contacts.length > 0 ? Math.max(...contacts.map(c => c.id)) + 1 : 1;
+    setContacts([...contacts, { ...newContact, id: nextId, favorite: false }]);
   };
-  const handleDeleteStudent = (id) => {    setStudents(students.filter(student => student.id !== id));
+
+  const deleteContact = (id) => {
+    setContacts(contacts.filter(c => c.id !== id));
   };
-  const filteredStudents = students.filter(student => {
-    if (filterType === 'GOOD') return student.score >= 8;
-    if (filterType === 'FAILED') return student.score < 5;
-    return true;
-  });
-  const totalStudents = students.length;
-    let averageScore = 0;
-  if (totalStudents > 0) {
-    const totalScore = students.reduce((sum, student) => sum + Number(student.score), 0);
-    averageScore = (totalScore / totalStudents).toFixed(2);
-  }
+
+  const toggleFavorite = (id) => {
+    setContacts(contacts.map(c => c.id === id ? { ...c, favorite: !c.favorite } : c));
+  };
+
+  if (loading) return <div>Đang tải...</div>;
+  if (error) return <div>{error}</div>;
 
   return (
-    <div style={{ maxWidth: '800px', margin: '0 auto', padding: '20px', fontFamily: 'sans-serif' }}>
-      <h1>Quản lý Điểm Sinh viên</h1>
-      
-    
-      <StudentForm onAdd={handleAddStudent} />
-
-      <hr />
-
-    
-      <div style={{ marginBottom: '20px' }}>
-        <h3>Thống kê & Bộ lọc</h3>
-      
-        <p>{`Tổng số sinh viên hiện tại: ${totalStudents}`}</p>
-        <p>{`Điểm trung bình toàn lớp: ${averageScore}`}</p>
-        
-        <div>
-          <button onClick={() => setFilterType('ALL')} style={{ marginRight: '10px' }}>Tất cả</button>
-          <button onClick={() => setFilterType('GOOD')} style={{ marginRight: '10px' }}>{`Loại Giỏi (>= 8)`}</button>
-          <button onClick={() => setFilterType('FAILED')}>{`Trượt (< 5)`}</button>
-        </div>
-      </div>
-
-     
-      <StudentList 
-        students={filteredStudents} 
-        onDelete={handleDeleteStudent} 
-      />
-    </div>
+    <Routes>
+      <Route path="/" element={<Layout />}>
+        <Route index element={<Home contacts={contacts} />} />
+        <Route path="contacts" element={<ContactList contacts={contacts} onDelete={deleteContact} onToggleFav={toggleFavorite} />} />
+        <Route path="contacts/new" element={<AddContact onAdd={addContact} />} />
+        <Route path="contacts/:id" element={<ContactDetail contacts={contacts} />} />
+      </Route>
+    </Routes>
   );
 };
 
